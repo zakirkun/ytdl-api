@@ -145,6 +145,34 @@ async def get_download_status(request: Request, job_id: str):
     )
 
 
+@app.get("/api/metadata/{job_id}", response_model=VideoInfo)
+@limiter.limit(f"{settings.RATE_LIMIT_PER_HOUR}/hour")
+async def get_video_metadata(request: Request, job_id: str):
+    """
+    Get video metadata for a job
+    
+    Returns only the video information (title, duration, thumbnail, etc.)
+    Rate limits: 50 requests per hour
+    """
+    job_data = cache.get_job_status(job_id)
+    
+    if not job_data:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    # Get video info from job data
+    if not job_data.get('video_info'):
+        raise HTTPException(status_code=404, detail="Video metadata not available yet")
+    
+    vi = job_data['video_info']
+    return VideoInfo(
+        title=vi.get('title'),
+        duration=vi.get('duration'),
+        thumbnail=vi.get('thumbnail'),
+        uploader=vi.get('uploader'),
+        filesize=vi.get('filesize')
+    )
+
+
 @app.get("/api/download/{job_id}")
 @limiter.limit(f"{settings.RATE_LIMIT_PER_HOUR}/hour")
 async def download_file(request: Request, job_id: str):
