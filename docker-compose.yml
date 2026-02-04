@@ -1,0 +1,97 @@
+version: '3.8'
+
+services:
+  # Redis - Cache and Message Broker
+  redis:
+    image: redis:7-alpine
+    container_name: ytdl-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    restart: unless-stopped
+
+  # FastAPI Web Application
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ytdl-web
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./downloads:/tmp/downloads
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - DOWNLOAD_DIR=/tmp/downloads
+      - FILE_RETENTION_HOURS=2
+      - CLEANUP_INTERVAL_MINUTES=30
+      - RATE_LIMIT_PER_MINUTE=10
+      - RATE_LIMIT_PER_HOUR=50
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Celery Worker
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    container_name: ytdl-worker
+    volumes:
+      - ./downloads:/tmp/downloads
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - DOWNLOAD_DIR=/tmp/downloads
+      - MAX_FILE_SIZE_MB=500
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Celery Beat - Periodic Tasks
+  beat:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    container_name: ytdl-beat
+    command: celery -A app.tasks.celery_app beat --loglevel=info
+    volumes:
+      - ./downloads:/tmp/downloads
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - DOWNLOAD_DIR=/tmp/downloads
+      - FILE_RETENTION_HOURS=2
+      - CLEANUP_INTERVAL_MINUTES=30
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Nginx - Reverse Proxy
+  nginx:
+    image: nginx:alpine
+    container_name: ytdl-nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./downloads:/tmp/downloads:ro
+    depends_on:
+      - web
+    restart: unless-stopped
+
+volumes:
+  redis_data:
