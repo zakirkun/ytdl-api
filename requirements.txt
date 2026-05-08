@@ -3,7 +3,7 @@ uvicorn[standard]==0.27.0
 yt-dlp>=2024.12.23
 celery[redis]==5.3.6
 redis==5.0.1
-python-multipart==0.0.6
+python-multipart==0.0.27
 pydantic-settings==2.1.0
 slowapi==0.1.9
 aiofiles==23.2.1
